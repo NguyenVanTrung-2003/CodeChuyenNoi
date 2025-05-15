@@ -25,7 +25,6 @@ public class ExtractorText {
                 logger.error("Không tìm thấy thẻ chứa nội dung truyện (class='chapter-c')");
                 return "";
             }
-
             String text = chapterContent.text();
             return text.replaceAll("\\s+", " ").trim();
         } catch (Exception e) {

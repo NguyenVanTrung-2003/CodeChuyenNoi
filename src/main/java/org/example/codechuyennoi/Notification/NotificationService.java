@@ -9,4 +9,5 @@ public class NotificationService {
         logger.info("Gửi thông báo: Thành công = {}, Tin nhắn = {}", success, message);
         // Placeholder: Triển khai gửi thông báo qua email, API, hoặc hệ thống khác
     }
+
 }

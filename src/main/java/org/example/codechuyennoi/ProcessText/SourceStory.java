@@ -1,3 +1,4 @@
+
 package org.example.codechuyennoi.ProcessText;
 
 import org.jsoup.Jsoup;
@@ -7,11 +8,9 @@ import org.slf4j.LoggerFactory;
 public class SourceStory {
     private static final Logger logger = LoggerFactory.getLogger(SourceStory.class);
     private final String urlSource;
-
     public SourceStory(String urlSource) {
         this.urlSource = urlSource;
     }
-
     public String fetchHtmlContent() {
         try {
             logger.info("Đang tải HTML từ: {}", urlSource);

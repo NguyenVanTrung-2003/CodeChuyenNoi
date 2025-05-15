@@ -13,5 +13,7 @@ public class Story {
     public void setProcessedText(String processedText) {
         this.processedText = processedText;
     }
+
+
 }
 

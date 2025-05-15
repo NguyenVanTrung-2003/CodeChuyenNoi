@@ -11,28 +11,22 @@ public class CleanText {
             logger.warn("Văn bản thô rỗng");
             return "";
         }
-
         try {
             logger.info("Đang làm sạch văn bản");
-
             // Bước 1: Chuẩn hóa đầu vào (nếu cần)
             String text = rawText;
-
             // Bước 2: Loại bỏ các đoạn quảng cáo hay gặp
             text = removeAds(text);
-
             // Bước 3: Loại bỏ ký tự đặc biệt, khoảng trắng thừa
             String cleanedText = text.replaceAll("[^\\p{L}\\p{N}\\s.,!?]", "")
                     .replaceAll("\\s+", " ")
                     .trim();
-
             return cleanedText;
         } catch (Exception e) {
             logger.error("Lỗi khi làm sạch văn bản: {}", e.getMessage());
             return "";
         }
     }
-
     private String removeAds(String text) {
         // Danh sách các mẫu quảng cáo phổ biến
         String[] adPatterns = {
@@ -50,7 +44,6 @@ public class CleanText {
         for (String pattern : adPatterns) {
             text = text.replaceAll("(?i)" + pattern, "");  // (?i) để không phân biệt hoa thường
         }
-
         return text;
     }
 }
