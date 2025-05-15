@@ -117,7 +117,10 @@ public class WorkflowCoordinator {
                 notifyFailure("Không thể tải tài nguyên nền");
                 return;
             }
-            VideoStory videoStory = videoComposer.composeVideo(story, audioStory, backgroundPath);
+            String title = "Chuyện cổ tích: " ;// hoặc bạn tự đặt
+            String description = "Video kể chuyện tự động được tạo bởi hệ thống.";
+            VideoStory videoStory = videoComposer.composeVideo(story, audioStory, backgroundPath, title, description);
+
             if (videoStory == null) {
                 notifyFailure("Không thể tổng hợp video");
                 return;
@@ -153,7 +156,5 @@ public class WorkflowCoordinator {
         logger.error("Thông báo thất bại: {}", message); // Ghi log thông báo thất bại
         notificationService.sendCompletionNotification(false, message);
     }
-
-    // Giữ nguyên phương thức main để chạy chương trình
 
 }
