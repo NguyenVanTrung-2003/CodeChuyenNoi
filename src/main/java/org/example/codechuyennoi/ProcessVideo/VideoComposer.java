@@ -21,33 +21,36 @@ public class VideoComposer {
             logger.warn("Thiếu đầu vào để tổng hợp video");
             return null;
         }
-
         try {
             logger.info("Đang tổng hợp video...");
             String outputPath = "output/video_" + System.currentTimeMillis() + ".mp4";
 
-            // Chuẩn bị lệnh ffmpeg dạng List để tránh lỗi parsing
-            // Giả sử bạn muốn ghép background video/hình + audio rồi thêm text overlay
-            // Đây là câu lệnh mẫu cơ bản, bạn có thể chỉnh lại theo nhu cầu:
-            // ffmpeg -i backgroundPath -i audioPath -filter_complex "drawtext=..." -c:v libx264 -c:a aac -shortest outputPath
-
-            String text = story.getProcessedText().replace(":", "\\:").replace("'", "\\'");
+            // Lấy nội dung cần hiển thị, escape các ký tự đặc biệt
+            String text = story.getProcessedText()
+                    .replace(":", "\\:")
+                    .replace("'", "\\'")
+                    .replace("\"", "\\\"");
 
             ProcessBuilder pb = new ProcessBuilder(
                     ffmpegPath,
-                    "-i", backgroundPath,
-                    "-i", audioStory.getAudioFilePath(),
+                    "-y",                     // Ghi đè nếu file tồn tại
+                    "-loop", "1",            // ✅ Lặp ảnh nếu là ảnh tĩnh
+                    "-i", backgroundPath,    // ✅ Ảnh hoặc video nền
+                    "-i", audioStory.getAudioFilePath(),  // Âm thanh
                     "-filter_complex", "drawtext=text='" + text + "':fontcolor=white:fontsize=24:x=10:y=10",
                     "-c:v", "libx264",
+                    "-tune", "stillimage",   // ✅ Tối ưu cho ảnh tĩnh
                     "-c:a", "aac",
-                    "-shortest",
+                    "-b:a", "192k",
+                    "-pix_fmt", "yuv420p",
+                    "-shortest",             // ✅ Cắt khi audio kết thúc
                     outputPath
             );
 
-            pb.redirectErrorStream(true);  // Gộp stderr vào stdout để đọc dễ hơn
+            pb.redirectErrorStream(true);  // Gộp stderr vào stdout để debug
             Process process = pb.start();
 
-            // Đọc output từ ffmpeg để debug
+            // Ghi log output ffmpeg
             try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {

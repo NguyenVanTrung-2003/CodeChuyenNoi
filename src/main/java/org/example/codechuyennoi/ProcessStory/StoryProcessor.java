@@ -25,7 +25,7 @@ public class StoryProcessor {
 
     public StoryProcessor(Properties config) {
         String urlSource = config.getProperty("story.url",
-                "https://truyenfull.vision/loi-hua-khuynh-the-tuyet-mac/chuong-3/");
+                "https://truyenfull.vision/thay-phong-thuy/chuong-1/");
         this.sourceStory = new SourceStory(urlSource);
         this.extractorText = new ExtractorText();
         this.cleanText = new CleanText();

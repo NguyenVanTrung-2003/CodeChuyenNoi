@@ -17,7 +17,7 @@ public class BackgroundManager {
      */
     public BackgroundManager(String backgroundPath) {
         if (backgroundPath == null || backgroundPath.trim().isEmpty()) {
-            this.backgroundPath = "D:\\anh";
+            this.backgroundPath = "D:\\anhtrutien";
         } else {
             this.backgroundPath = backgroundPath;
         }

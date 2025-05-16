@@ -27,7 +27,7 @@ public class AudioGenerator {
             }
         }
 
-        try (TextToSpeech ttsWrapper = new TextToSpeech("vi+f3", 150, 160)) {
+        try (TextToSpeech ttsWrapper = new TextToSpeech("vi+f3", 150, 120)) {
             ByteString audioContent = ttsWrapper.synthesize(processedText);
             String outputPath = outputDir.getPath()
                     + File.separator

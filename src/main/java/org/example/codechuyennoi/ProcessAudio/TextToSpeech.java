@@ -34,12 +34,16 @@ public class TextToSpeech implements AutoCloseable {
      * @throws Exception nếu quá trình bị lỗi
      */
     public ByteString synthesize(String text) throws Exception {
-        // Loại bỏ dấu " để tránh lỗi shell
+        if (text == null || text.trim().isEmpty()) {
+            throw new IllegalArgumentException("Văn bản đầu vào trống.");
+        }
+
+        // Loại bỏ dấu "
         text = text.replace("\"", "");
 
-        // Tập hợp command và các tham số
         List<String> cmd = new ArrayList<>();
         cmd.add(espeakExecutable);
+        cmd.add("--stdin");   // ✅ Đọc văn bản từ stdin
         cmd.add("--stdout");
         cmd.add("-v");
         cmd.add(voice);
@@ -47,14 +51,19 @@ public class TextToSpeech implements AutoCloseable {
         cmd.add(String.valueOf(speed));
         cmd.add("-a");
         cmd.add(String.valueOf(amplitude));
-        cmd.add(text);
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT); // Hiện lỗi trong console
+        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
 
         Process process = pb.start();
 
-        // Đọc toàn bộ stdout (WAV data)
+        // ✅ Ghi văn bản vào stdin của eSpeak
+        try (var stdin = process.getOutputStream()) {
+            stdin.write(text.getBytes());
+            stdin.flush();
+        }
+
+        // ✅ Đọc WAV đầu ra từ stdout
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (InputStream is = process.getInputStream()) {
             byte[] buf = new byte[4096];
@@ -66,13 +75,13 @@ public class TextToSpeech implements AutoCloseable {
 
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            throw new RuntimeException(
-                    String.format("eSpeak exited with code %d (cmd=%s)", exitCode, cmd)
-            );
+            throw new RuntimeException("eSpeak lỗi, mã thoát: " + exitCode);
         }
 
         return ByteString.copyFrom(baos.toByteArray());
     }
+
+
 
     @Override
     public void close() {
