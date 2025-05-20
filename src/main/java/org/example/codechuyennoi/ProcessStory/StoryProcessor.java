@@ -10,93 +10,161 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
-import java.util.Properties;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class StoryProcessor {
     private static final Logger logger = LoggerFactory.getLogger(StoryProcessor.class);
 
-    private final SourceStory sourceStory;
     private final ExtractorText extractorText;
     private final CleanText cleanText;
-
-    // Biến lưu bản truyện mới nhất đã xử lý (cache)
-    private Story latestProcessedStory;
+    private final int batchSize;
+    private final Path storageDir = Path.of("luutrutruyen");
 
     public StoryProcessor(Properties config) {
-        String urlSource = config.getProperty("story.url",
-                "https://truyenfull.vision/thay-phong-thuy/chuong-1/");
-        this.sourceStory = new SourceStory(urlSource);
+        this.batchSize = Integer.parseInt(config.getProperty("story.batch.size", "5"));
         this.extractorText = new ExtractorText();
         this.cleanText = new CleanText();
-    }
-
-    /**
-     * Xử lý toàn bộ quy trình và lưu truyện ra file.
-     */
-    public Optional<Story> processAndCreateStory() {
-        long start = System.currentTimeMillis();
-
         try {
-            logger.info("Bắt đầu quy trình xử lý truyện...");
-
-            // Bước 1: Tải HTML
-            String htmlContent = sourceStory.fetchHtmlContent();
-            if (htmlContent == null || htmlContent.isEmpty()) {
-                logger.error("Không thể tải nội dung HTML từ nguồn.");
-                return Optional.empty();
-            }
-
-            // Bước 2: Trích xuất văn bản
-            String rawText = extractorText.extractText(htmlContent);
-            if (rawText == null || rawText.isEmpty()) {
-                logger.error("Không thể trích xuất văn bản từ HTML.");
-                return Optional.empty();
-            }
-
-            // Bước 3: Làm sạch văn bản
-            String cleanedText = cleanText.cleanStoryText(rawText);
-            if (cleanedText == null || cleanedText.isEmpty()) {
-                logger.error("Văn bản sau khi làm sạch bị rỗng.");
-                return Optional.empty();
-            }
-
-            // Tạo đối tượng Story
-            Story story = new Story(cleanedText);
-            this.latestProcessedStory = story;
-
-            // Lưu ra file
-            saveStoryToFile(story, "luutrutruyen/clean_truyen.txt");
-
-            logger.info("Hoàn tất xử lý truyện trong {}ms.", System.currentTimeMillis() - start);
-            return Optional.of(story);
-
-        } catch (Exception e) {
-            logger.error("Đã xảy ra lỗi trong quá trình xử lý truyện: {}", e.getMessage(), e);
-            return Optional.empty();
+            Files.createDirectories(storageDir);
+        } catch (IOException e) {
+            logger.warn("Không thể tạo thư mục lưu trữ gốc: {}", e.getMessage());
         }
     }
 
     /**
-     * Lưu văn bản truyện vào file.
+     * processChaptersInBatch: Xử lý batch chương từ start đến end
+     * Lưu file chương theo thư mục riêng của truyện (storyName)
      */
+    public List<Story> processChaptersInBatch(String storyName, String baseUrl, int startChapter, int endChapter) {
+        logger.info("Bắt đầu xử lý truyện '{}' chương từ {} đến {}.", storyName,baseUrl, startChapter, endChapter);
+
+        Path storyDir = storageDir.resolve(storyName);
+        try {
+            Files.createDirectories(storyDir);
+        } catch (IOException e) {
+            logger.warn("Không thể tạo thư mục truyện {}: {}", storyName, e.getMessage());
+        }
+
+        BlockingQueue<Integer> chapterQueue = new LinkedBlockingQueue<>();
+        List<Story> processedStories = Collections.synchronizedList(new ArrayList<>());
+
+        // Producer: quét & enqueue chương
+        Thread producer = new Thread(() -> {
+            for (int chap = startChapter; chap <= endChapter; chap++) {
+                Path file = storyDir.resolve("chuong-" + chap + ".txt");
+                if (Files.exists(file)) {
+                    logger.info("Producer: chương {} đã có file, bỏ qua.", chap);
+                    continue;
+                }
+                String url = baseUrl + chap + "/";
+                String html;
+                String rawText;
+                try {
+                    // 1) Tải HTML
+                    html = new SourceStory(url).fetchHtmlContent();
+                    if (html == null || html.isEmpty()) {
+                        logger.info("Producer: chương {} không tồn tại (HTML rỗng). Dừng producer.", chap);
+                        break;
+                    }
+                    // 2) Dùng extractorText để phát hiện nội dung
+                    rawText = extractorText.extractText(html);
+                    if (rawText == null || rawText.isEmpty()) {
+                        logger.info("Producer: chương {} không chứa nội dung (rawText rỗng). Dừng producer.", chap);
+                        break;
+                    }
+                    // 3) Nếu có rawText, enqueue chương
+                    chapterQueue.put(chap);
+                    logger.info("Producer: enqueue chương {}.", chap);
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    logger.error("Producer: lỗi kiểm tra chương {}: {}", chap, e.getMessage());
+                    break;
+                }
+            }
+        });
+        producer.start();
+
+        // Consumer pool: đa luồng xử lý chương
+        ExecutorService consumers = Executors.newFixedThreadPool(batchSize);
+        for (int i = 0; i < batchSize; i++) {
+            consumers.submit(() -> {
+                try {
+                    while (true) {
+                        Integer chap = chapterQueue.poll(3, TimeUnit.SECONDS);
+                        if (chap == null) {
+                            if (!producer.isAlive()) break;
+                            else continue;
+                        }
+                        Optional<Story> storyOpt = processSingleChapter(storyName, baseUrl + chap + "/", chap);
+                        storyOpt.ifPresent(processedStories::add);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+        }
+        consumers.shutdown();
+        try {
+            consumers.awaitTermination(30, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        logger.info("Hoàn thành xử lý truyện '{}'. Tổng chương thành công: {}", storyName, processedStories.size());
+        return processedStories;
+    }
+
+    /**
+     * Xử lý fetch/extract/clean và lưu file cho 1 chương cụ thể,
+     * lưu file chương trong thư mục riêng của truyện.
+     */
+    public Optional<Story> processSingleChapter(String storyName, String chapterUrl, int chapterNumber) {
+        try {
+            logger.info("Consumer: xử lý chương {}: {}", chapterNumber, chapterUrl);
+
+            String htmlContent = new SourceStory(chapterUrl).fetchHtmlContent();
+            if (htmlContent == null || htmlContent.isEmpty()) {
+                logger.warn("Consumer: không tải được HTML cho chương {}", chapterNumber);
+                return Optional.empty();
+            }
+
+            String rawText = extractorText.extractText(htmlContent);
+            if (rawText == null || rawText.isEmpty()) {
+                logger.warn("Consumer: không trích xuất được nội dung chương {}", chapterNumber);
+                return Optional.empty();
+            }
+
+            String cleaned = cleanText.cleanStoryText(rawText);
+            if (cleaned == null || cleaned.isEmpty()) {
+                logger.warn("Consumer: nội dung rỗng sau clean chương {}", chapterNumber);
+                return Optional.empty();
+            }
+
+            Story story = new Story(cleaned);
+            Path storyDir = storageDir.resolve(storyName);
+            String filePath = storyDir.resolve("chuong-" + chapterNumber + ".txt").toString();
+            saveStoryToFile(story, filePath);
+            logger.info("Consumer: Đã lưu chương {} vào file.", chapterNumber);
+
+            return Optional.of(story);
+        } catch (Exception e) {
+            logger.error("Consumer: Lỗi xử lý chương {}: {}", chapterNumber, e.getMessage(), e);
+            return Optional.empty();
+        }
+    }
+
     private void saveStoryToFile(Story story, String filePath) {
         try {
             Files.createDirectories(Path.of(filePath).getParent());
             try (FileWriter writer = new FileWriter(filePath)) {
                 writer.write(story.getProcessedText());
-                logger.info("Đã lưu truyện vào file: {}", filePath);
             }
         } catch (IOException e) {
-            logger.error("Lỗi khi lưu truyện vào file: {}", e.getMessage(), e);
+            logger.error("Lỗi lưu file {}: {}", filePath, e.getMessage(), e);
         }
-    }
-
-    /**
-     * Trả về văn bản truyện nếu xử lý thành công, hoặc rỗng nếu thất bại.
-     */
-    public Optional<String> processStoryFromSource() {
-        Optional<Story> maybeStory = processAndCreateStory();
-        return maybeStory.map(Story::getProcessedText);
     }
 }

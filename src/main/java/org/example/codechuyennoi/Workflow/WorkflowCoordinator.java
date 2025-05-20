@@ -1,11 +1,13 @@
 package org.example.codechuyennoi.Workflow;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.charset.StandardCharsets; // Để đảm bảo encoding đúng
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.example.codechuyennoi.Integation.MetadataCreator;
+import org.example.codechuyennoi.Notification.ChapterMonitor;
 import org.example.codechuyennoi.Notification.NotificationService;
 import org.example.codechuyennoi.ProcessAudio.AudioGenerator;
 import org.example.codechuyennoi.ProcessAudio.AudioProcessor;
@@ -18,17 +20,10 @@ import org.example.codechuyennoi.Integation.YouTubeUploader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.Properties;
-
 public class WorkflowCoordinator {
     private static final Logger logger = LoggerFactory.getLogger(WorkflowCoordinator.class);
 
-    // Thay thế SourceStory, ExtractorText, CleanText bằng StoryProcessor
-    private final StoryProcessor storyProcessor; // <-- Sử dụng lớp mới này
-
+    private final StoryProcessor storyProcessor;
     private final AudioGenerator audioGenerator;
     private final AudioProcessor audioProcessor;
     private final BackgroundManager backgroundManager;
@@ -36,17 +31,19 @@ public class WorkflowCoordinator {
     private final MetadataCreator metadataCreator;
     private final YouTubeUploader youTubeUploader;
     private final NotificationService notificationService;
+    private final BlockingQueue<Integer> chapterQueue = new LinkedBlockingQueue<>();
+    private Thread monitorThread;
 
-    public WorkflowCoordinator(Properties config) {
-        // WorkflowCoordinator vẫn chịu trách nhiệm đọc cấu hình và khởi tạo các thành phần chính
+    private final String baseUrl;
+    private final String storyName; //  Lưu lại tên truyện
+
+    public WorkflowCoordinator(Properties config, String storyName) {
+        this.storyName = storyName; // Lưu vào field
+        this.baseUrl = config.getProperty("story.base.url");
         String ffmpegPath = config.getProperty("ffmpeg.path");
         String backgroundPath = config.getProperty("background.resources.path");
         String clientSecretPath = config.getProperty("google.oauth.client.secret.path");
-
-        // Khởi tạo StoryProcessor và truyền cấu hình vào
-        // StoryProcessor sẽ tự khởi tạo SourceStory bên trong nó
-        this.storyProcessor = new StoryProcessor(config); // <-- Khởi tạo StoryProcessor mới
-        // Khởi tạo các thành phần còn lại
+        this.storyProcessor = new StoryProcessor(config);
         this.audioGenerator = new AudioGenerator();
         this.audioProcessor = new AudioProcessor();
         this.backgroundManager = new BackgroundManager(backgroundPath);
@@ -54,23 +51,25 @@ public class WorkflowCoordinator {
         this.metadataCreator = new MetadataCreator();
         this.youTubeUploader = new YouTubeUploader(clientSecretPath);
         this.notificationService = new NotificationService();
+        startChapterMonitoring(config);
     }
-    public void processStory() {
-        logger.info("Bắt đầu quy trình xử lý câu chuyện tổng thể.");
+
+    public void processMultipleChapters(String storyName, String baseUrl, int startChapter, int endChapter) {
+        logger.info("Bắt đầu xử lý batch chương từ {} đến {} với base URL: {}", startChapter, endChapter, baseUrl);
         try {
-            Optional<String> maybeCleanedText = storyProcessor.processStoryFromSource();
-            Story story = createStory(maybeCleanedText.get());
-            AudioStory audioStory = generateAudio(story);
-            VideoStory videoStory = composeVideo(story, audioStory);
-            String youtubeId = uploadToYouTube(videoStory);
-            sendSuccessNotification(youtubeId);
+            List<Story> processedStories = storyProcessor.processChaptersInBatch(storyName, baseUrl, startChapter, endChapter);
+
+            for (Story story : processedStories) {
+                AudioStory audioStory = generateAudio(story);
+                // VideoStory videoStory = composeVideo(story, audioStory);
+                // String youtubeId = uploadToYouTube(videoStory);
+                // sendSuccessNotification(youtubeId);
+            }
         } catch (Exception e) {
-            logger.error("Lỗi nghiêm trọng trong quy trình tổng thể: {}", e.getMessage(), e);
-            notifyFailure("Lỗi hệ thống trong quy trình tổng thể: " + e.getMessage());
+            logger.error("Lỗi nghiêm trọng trong quy trình batch: {}", e.getMessage(), e);
+            notifyFailure("Lỗi hệ thống trong quy trình batch: " + e.getMessage());
         }
-    }
-    private Story createStory(String cleanedText) {
-        return new Story(cleanedText);
+        logger.info("Hoàn thành xử lý batch chương.");
     }
 
     private AudioStory generateAudio(Story story) {
@@ -93,9 +92,35 @@ public class WorkflowCoordinator {
     private void sendSuccessNotification(String youtubeId) {
         notificationService.sendCompletionNotification(true, "Quy trình hoàn thành, YouTube ID: " + youtubeId);
     }
+
     private void notifyFailure(String message) {
-        logger.error("Thông báo thất bại: {}", message); // Ghi log thông báo thất bại
+        logger.error("Thông báo thất bại: {}", message);
         notificationService.sendCompletionNotification(false, message);
     }
 
+    private void startChapterMonitoring(Properties config) {
+        int initialLastChapter = Integer.parseInt(config.getProperty("story.last.chapter", "0"));
+        ChapterMonitor monitor = new ChapterMonitor(chapterQueue, initialLastChapter, baseUrl);
+        monitorThread = new Thread(monitor);
+        monitorThread.start();
+        logger.info("ChapterMonitor đã được khởi động.");
+
+        new Thread(this::processNewChapters).start();
+    }
+
+    private void processNewChapters() {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                Integer chapter = chapterQueue.take();
+                logger.info("Phát hiện chương mới: {}", chapter);
+                // ✅ Sửa lỗi: thêm storyName vào đây
+                processMultipleChapters(storyName, baseUrl, chapter, chapter);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                logger.error("Lỗi khi xử lý chương mới: {}", e.getMessage(), e);
+                notifyFailure("Lỗi xử lý chương mới: " + e.getMessage());
+            }
+        }
+    }
 }
