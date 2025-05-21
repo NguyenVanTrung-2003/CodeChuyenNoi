@@ -97,15 +97,14 @@ public class WorkflowCoordinator {
         logger.error("Thông báo thất bại: {}", message);
         notificationService.sendCompletionNotification(false, message);
     }
-
     private void startChapterMonitoring(Properties config) {
-        int initialLastChapter = Integer.parseInt(config.getProperty("story.last.chapter", "0"));
-        ChapterMonitor monitor = new ChapterMonitor(chapterQueue, initialLastChapter, baseUrl);
+        String lastChapterFilePath = config.getProperty("last.chapter.file", "lastChapter.txt");
+        // Giả sử bạn đã có biến storyName
+        ChapterMonitor monitor = new ChapterMonitor(chapterQueue, baseUrl, lastChapterFilePath, storyName);
         monitorThread = new Thread(monitor);
         monitorThread.start();
         logger.info("ChapterMonitor đã được khởi động.");
 
-        new Thread(this::processNewChapters).start();
     }
 
     private void processNewChapters() {
@@ -113,7 +112,6 @@ public class WorkflowCoordinator {
             try {
                 Integer chapter = chapterQueue.take();
                 logger.info("Phát hiện chương mới: {}", chapter);
-                // ✅ Sửa lỗi: thêm storyName vào đây
                 processMultipleChapters(storyName, baseUrl, chapter, chapter);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

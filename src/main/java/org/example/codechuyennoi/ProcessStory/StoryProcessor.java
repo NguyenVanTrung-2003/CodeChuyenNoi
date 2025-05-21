@@ -57,7 +57,7 @@ public class StoryProcessor {
                     logger.info("Producer: chương {} đã có file, bỏ qua.", chap);
                     continue;
                 }
-                String url = baseUrl + chap + "/";
+                String url = baseUrl + "/chuong-" + chap + "/";
                 String html;
                 String rawText;
                 try {
@@ -70,7 +70,7 @@ public class StoryProcessor {
                     // 2) Dùng extractorText để phát hiện nội dung
                     rawText = extractorText.extractText(html);
                     if (rawText == null || rawText.isEmpty()) {
-                        logger.info("Producer: chương {} không chứa nội dung (rawText rỗng). Dừng producer.", chap);
+                        logger.info("Producer: chương {} chưa tồn tại trên Web. kết thúc producer.", chap);
                         break;
                     }
                     // 3) Nếu có rawText, enqueue chương
@@ -99,7 +99,8 @@ public class StoryProcessor {
                             if (!producer.isAlive()) break;
                             else continue;
                         }
-                        Optional<Story> storyOpt = processSingleChapter(storyName, baseUrl + chap + "/", chap);
+                        Optional<Story> storyOpt = processSingleChapter(storyName, baseUrl + "/chuong-" + chap + "/", chap);
+
                         storyOpt.ifPresent(processedStories::add);
                     }
                 } catch (InterruptedException e) {
@@ -123,6 +124,11 @@ public class StoryProcessor {
      * lưu file chương trong thư mục riêng của truyện.
      */
     public Optional<Story> processSingleChapter(String storyName, String chapterUrl, int chapterNumber) {
+        Path chapterFile = storageDir.resolve(storyName).resolve("chuong-" + chapterNumber + ".txt");
+        if (Files.exists(chapterFile)) {
+            logger.info("Consumer: chương {} đã có file, bỏ qua (kiểm tra lần 2).", chapterNumber);
+            return Optional.empty();
+        }
         try {
             logger.info("Consumer: xử lý chương {}: {}", chapterNumber, chapterUrl);
 
