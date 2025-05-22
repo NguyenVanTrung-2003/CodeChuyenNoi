@@ -1,3 +1,4 @@
+
 package org.example.codechuyennoi.ProcessStory;
 
 import org.example.codechuyennoi.ProcessText.CleanText;
@@ -125,36 +126,24 @@ public class StoryProcessor {
      */
     public Optional<Story> processSingleChapter(String storyName, String chapterUrl, int chapterNumber) {
         Path chapterFile = storageDir.resolve(storyName).resolve("chuong-" + chapterNumber + ".txt");
-        if (Files.exists(chapterFile)) {
+        if (chapterFileExists(chapterFile)) {
             logger.info("Consumer: chương {} đã có file, bỏ qua (kiểm tra lần 2).", chapterNumber);
             return Optional.empty();
         }
         try {
             logger.info("Consumer: xử lý chương {}: {}", chapterNumber, chapterUrl);
 
-            String htmlContent = new SourceStory(chapterUrl).fetchHtmlContent();
-            if (htmlContent == null || htmlContent.isEmpty()) {
-                logger.warn("Consumer: không tải được HTML cho chương {}", chapterNumber);
-                return Optional.empty();
-            }
+            Optional<String> htmlContentOpt = fetchHtmlContentSafe(chapterUrl, chapterNumber);
+            if (htmlContentOpt.isEmpty()) return Optional.empty();
 
-            String rawText = extractorText.extractText(htmlContent);
-            if (rawText == null || rawText.isEmpty()) {
-                logger.warn("Consumer: không trích xuất được nội dung chương {}", chapterNumber);
-                return Optional.empty();
-            }
+            Optional<String> rawTextOpt = extractTextSafe(htmlContentOpt.get(), chapterNumber);
+            if (rawTextOpt.isEmpty()) return Optional.empty();
 
-            String cleaned = cleanText.cleanStoryText(rawText);
-            if (cleaned == null || cleaned.isEmpty()) {
-                logger.warn("Consumer: nội dung rỗng sau clean chương {}", chapterNumber);
-                return Optional.empty();
-            }
+            Optional<String> cleanedOpt = cleanTextSafe(rawTextOpt.get(), chapterNumber);
+            if (cleanedOpt.isEmpty()) return Optional.empty();
 
-            Story story = new Story(chapterNumber,cleaned);
-            Path storyDir = storageDir.resolve(storyName);
-            String filePath = storyDir.resolve("chuong-" + chapterNumber + ".txt").toString();
-            saveStoryToFile(story, filePath);
-            logger.info("Consumer: Đã lưu chương {} vào file.", chapterNumber);
+            Story story = new Story(chapterNumber, cleanedOpt.get());
+            saveStory(story, storyName, chapterNumber);
 
             return Optional.of(story);
         } catch (Exception e) {
@@ -162,6 +151,45 @@ public class StoryProcessor {
             return Optional.empty();
         }
     }
+
+    private boolean chapterFileExists(Path chapterFile) {
+        return Files.exists(chapterFile);
+    }
+
+    private Optional<String> fetchHtmlContentSafe(String url, int chapterNumber) {
+        String content = new SourceStory(url).fetchHtmlContent();
+        if (content == null || content.isEmpty()) {
+            logger.warn("Consumer: không tải được HTML cho chương {}", chapterNumber);
+            return Optional.empty();
+        }
+        return Optional.of(content);
+    }
+
+    private Optional<String> extractTextSafe(String html, int chapterNumber) {
+        String rawText = extractorText.extractText(html);
+        if (rawText == null || rawText.isEmpty()) {
+            logger.warn("Consumer: không trích xuất được nội dung chương {}", chapterNumber);
+            return Optional.empty();
+        }
+        return Optional.of(rawText);
+    }
+
+    private Optional<String> cleanTextSafe(String rawText, int chapterNumber) {
+        String cleaned = cleanText.cleanStoryText(rawText);
+        if (cleaned == null || cleaned.isEmpty()) {
+            logger.warn("Consumer: nội dung rỗng sau clean chương {}", chapterNumber);
+            return Optional.empty();
+        }
+        return Optional.of(cleaned);
+    }
+
+    private void saveStory(Story story, String storyName, int chapterNumber) throws IOException {
+        Path storyDir = storageDir.resolve(storyName);
+        String filePath = storyDir.resolve("chuong-" + chapterNumber + ".txt").toString();
+        saveStoryToFile(story, filePath);
+        logger.info("Consumer: Đã lưu chương {} vào file.", chapterNumber);
+    }
+
 
     private void saveStoryToFile(Story story, String filePath) {
         try {

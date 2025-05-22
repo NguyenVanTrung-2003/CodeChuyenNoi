@@ -1,3 +1,4 @@
+
 package org.example.codechuyennoi.Workflow;
 
 import java.io.IOException;
@@ -52,6 +53,7 @@ public class WorkflowCoordinator {
         this.youTubeUploader = new YouTubeUploader(clientSecretPath);
         this.notificationService = new NotificationService();
         startChapterMonitoring(config);
+        processNewChapters();
     }
 
     public void processMultipleChapters(String storyName, String baseUrl, int startChapter, int endChapter) {

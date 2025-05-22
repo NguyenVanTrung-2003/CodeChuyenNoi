@@ -1,3 +1,4 @@
+
 package org.example.codechuyennoi.Notification;
 
 import org.jsoup.Jsoup;
@@ -39,31 +40,13 @@ public class ChapterMonitor implements Runnable {
                 logger.info("🕓 [{}] Đang kiểm tra chương mới tại: {}", now, baseUrl);
 
                 int newestChapter = checkNewestChapterFromSource();
+
                 if (newestChapter == -1) {
-                    logger.warn("⚠️ Không thể lấy thông tin chương mới (có thể lỗi mạng hoặc selector). Giữ lastKnownChapter: {}", lastKnownChapter);
+                    handleErrorFetchingChapter();
                 } else if (newestChapter > lastKnownChapter) {
-                    logger.info("📢 Phát hiện chương mới: {} (lớn hơn lastKnownChapter {})", newestChapter, lastKnownChapter);
-
-                    for (int ch = lastKnownChapter + 1; ch <= newestChapter; ch++) {
-                        if (!chapterFileExists(ch)) {
-                            chapterQueue.put(ch);
-                            logger.info("📥 Thêm chương mới vào hàng đợi: {}", ch);
-                        } else {
-                            logger.info("Producer: chương {} đã có file, bỏ qua.", ch);
-                        }
-                    }
-                    updateLastKnownChapter(newestChapter);
-
+                    handleNewChaptersFound(newestChapter);
                 } else {
-                    logger.info("✅ Không có chương mới. lastKnownChapter vẫn là {}", lastKnownChapter);
-                    // 🆕 Kiểm tra lại 5 chương gần nhất đề phòng bị mất file
-                    int startCheck = Math.max(lastKnownChapter - 5 + 1, 1);
-                    for (int ch = startCheck; ch <= lastKnownChapter; ch++) {
-                        if (!chapterFileExists(ch)) {
-                            chapterQueue.put(ch);
-                            logger.info("♻️ File chương {} bị thiếu. Đã đưa lại vào hàng đợi để xử lý lại.", ch);
-                        }
-                    }
+                    handleNoNewChapters();
                 }
 
                 Thread.sleep(5 * 60 * 1000); // ngủ 5 phút
@@ -72,6 +55,43 @@ public class ChapterMonitor implements Runnable {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
                 logger.error("❌ Lỗi khi kiểm tra chương mới:", e);
+            }
+        }
+    }
+
+    private void handleErrorFetchingChapter() {
+        logger.warn("⚠️ Không thể lấy thông tin chương mới (có thể lỗi mạng hoặc selector). Giữ lastKnownChapter: {}", lastKnownChapter);
+    }
+
+    private void handleNewChaptersFound(int newestChapter) throws InterruptedException {
+        logger.info("📢 Phát hiện chương mới: {} (lớn hơn lastKnownChapter {})", newestChapter, lastKnownChapter);
+
+        for (int ch = lastKnownChapter + 1; ch <= newestChapter; ch++) {
+            if (!chapterFileExists(ch)) {
+                chapterQueue.put(ch);
+                logger.info("📥 Thêm chương mới vào hàng đợi: {}", ch);
+            } else {
+                logger.info("Producer: chương {} đã có file, bỏ qua.", ch);
+            }
+        }
+        updateLastKnownChapter(newestChapter);
+    }
+
+    private void handleNoNewChapters() throws InterruptedException {
+        logger.info("✅ Không có chương mới. lastKnownChapter vẫn là {}", lastKnownChapter);
+
+        int startCheck = Math.max(lastKnownChapter - 5 + 1, 1);
+        boolean updated = false;
+
+        for (int ch = startCheck; ch <= lastKnownChapter; ch++) {
+            if (!chapterFileExists(ch)) {
+                chapterQueue.put(ch);
+                logger.info("♻️ File chương {} bị thiếu. Đã đưa lại vào hàng đợi để xử lý lại.", ch);
+            } else {
+                if (ch == lastKnownChapter && !updated) {
+                    updateLastKnownChapter(ch);
+                    updated = true;
+                }
             }
         }
     }
@@ -133,6 +153,7 @@ public class ChapterMonitor implements Runnable {
     }
 
     private void updateLastKnownChapter(int newChapter) {
+
         logger.info("Cập nhật lastKnownChapter: {} -> {}", lastKnownChapter, newChapter);
         lastKnownChapter = newChapter;
         saveLastKnownChapter(newChapter);
