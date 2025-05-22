@@ -58,7 +58,6 @@ public class WorkflowCoordinator {
         logger.info("Bắt đầu xử lý batch chương từ {} đến {} với base URL: {}", startChapter, endChapter, baseUrl);
         try {
             List<Story> processedStories = storyProcessor.processChaptersInBatch(storyName, baseUrl, startChapter, endChapter);
-
             for (Story story : processedStories) {
                 AudioStory audioStory = generateAudio(story);
                 // VideoStory videoStory = composeVideo(story, audioStory);
@@ -73,7 +72,7 @@ public class WorkflowCoordinator {
     }
 
     private AudioStory generateAudio(Story story) {
-        AudioStory audioStory = audioGenerator.generateAudio(story.getProcessedText());
+        AudioStory audioStory = audioGenerator.generateAudio(storyName,story.getChapterNumber(),story.getProcessedText());
         return audioProcessor.processAudio(audioStory);
     }
 

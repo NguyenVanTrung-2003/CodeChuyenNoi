@@ -150,7 +150,7 @@ public class StoryProcessor {
                 return Optional.empty();
             }
 
-            Story story = new Story(cleaned);
+            Story story = new Story(chapterNumber,cleaned);
             Path storyDir = storageDir.resolve(storyName);
             String filePath = storyDir.resolve("chuong-" + chapterNumber + ".txt").toString();
             saveStoryToFile(story, filePath);
