@@ -8,12 +8,10 @@ public class MetadataCreator {
     public String createMetadata(String videoTitle, String videoDescription) {
         try {
             logger.info("Đang tạo metadata cho video");
-            // Tạo metadata dưới dạng JSON
-            return String.format("{\"title\": \"%s\", \"description\": \"%s\", \"tags\": [\"story\", \"auto-generated\"]}",
-                    videoTitle, videoDescription);
+            return videoTitle + " - " + videoDescription;
         } catch (Exception e) {
             logger.error("Lỗi khi tạo metadata: {}", e.getMessage());
-            return null;
+            return "Video kể chuyện tự động.";
         }
     }
 }

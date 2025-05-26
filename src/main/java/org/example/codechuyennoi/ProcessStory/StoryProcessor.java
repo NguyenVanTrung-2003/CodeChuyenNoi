@@ -142,7 +142,7 @@ public class StoryProcessor {
             Optional<String> cleanedOpt = cleanTextSafe(rawTextOpt.get(), chapterNumber);
             if (cleanedOpt.isEmpty()) return Optional.empty();
 
-            Story story = new Story(chapterNumber, cleanedOpt.get());
+            Story story = new Story(storyName,chapterNumber, cleanedOpt.get());
             saveStory(story, storyName, chapterNumber);
 
             return Optional.of(story);

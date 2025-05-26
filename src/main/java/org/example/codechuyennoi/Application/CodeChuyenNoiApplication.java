@@ -52,7 +52,7 @@ public class CodeChuyenNoiApplication {
 		WorkflowCoordinator coordinator = new WorkflowCoordinator(config,storyName);
 
 		// Gọi xử lý batch với thông tin đầu vào người dùng nhập
-		coordinator.processMultipleChapters(storyName,baseUrl, startChapter, endChapter);
+		coordinator.processMultipleChapters( startChapter, endChapter);
 	}
 
 }

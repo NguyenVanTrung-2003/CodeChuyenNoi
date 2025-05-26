@@ -56,7 +56,7 @@ public class WorkflowCoordinator {
         processNewChapters();
     }
 
-    public void processMultipleChapters(String storyName, String baseUrl, int startChapter, int endChapter) {
+    public void processMultipleChapters( int startChapter, int endChapter) {
         logger.info("Bắt đầu xử lý batch chương từ {} đến {} với base URL: {}", startChapter, endChapter, baseUrl);
         try {
             List<Story> processedStories = storyProcessor.processChaptersInBatch(storyName, baseUrl, startChapter, endChapter);
@@ -64,7 +64,7 @@ public class WorkflowCoordinator {
                 AudioStory audioStory = generateAudio(story);
                 // VideoStory videoStory = composeVideo(story, audioStory);
                 // String youtubeId = uploadToYouTube(videoStory);
-                // sendSuccessNotification(youtubeId);
+                 //sendSuccessNotification(youtubeId);
             }
         } catch (Exception e) {
             logger.error("Lỗi nghiêm trọng trong quy trình batch: {}", e.getMessage(), e);
@@ -113,7 +113,7 @@ public class WorkflowCoordinator {
             try {
                 Integer chapter = chapterQueue.take();
                 logger.info("Phát hiện chương mới: {}", chapter);
-                processMultipleChapters(storyName, baseUrl, chapter, chapter);
+                processMultipleChapters( chapter, chapter);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {

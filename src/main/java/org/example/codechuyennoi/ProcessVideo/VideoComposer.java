@@ -21,6 +21,8 @@ public class VideoComposer {
             logger.warn("Thiếu đầu vào để tổng hợp video");
             return null;
         }
+        logger.info("Đang ghép video cho truyện '{}', chương {}", story.getStoryName(), story.getChapterNumber());
+        logger.info("File âm thanh được sử dụng: {}", audioStory.getAudioFilePath());
         try {
             logger.info("Đang tổng hợp video...");
             String outputPath = "output/video_" + System.currentTimeMillis() + ".mp4";
