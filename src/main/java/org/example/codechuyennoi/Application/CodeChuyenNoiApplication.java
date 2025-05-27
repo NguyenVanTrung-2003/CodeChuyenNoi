@@ -28,7 +28,7 @@ public class CodeChuyenNoiApplication {
 
 		// Nếu người dùng không nhập thì dùng giá trị mặc định từ cấu hình
 		String baseUrl = inputBaseUrl.isEmpty()
-				? config.getProperty("story.base.url", "https://truyenfull.vision/thay-phong-thuy/chuong-")
+				? config.getProperty("story.base.url", "https://truyenfull.vision/thay-phong-thuy")
 				: inputBaseUrl;
 		System.out.print("Nhập tên truyện: ");
 		String storyName = scanner.nextLine().trim();
