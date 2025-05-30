@@ -84,7 +84,7 @@ public class WorkflowCoordinator {
             for (Story story : processedStories) {
                 // Bước 1: Chuyển văn bản thành audio (Text-to-Speech)
                 AudioStory audioStory = generateAudio(story);
-                VideoStory videoStory = composeVideo(story, audioStory);
+               // VideoStory videoStory = composeVideo(story, audioStory);
                 //String youtubeId = uploadToYouTube(videoStory);
                 //sendSuccessNotification(youtubeId);
             }

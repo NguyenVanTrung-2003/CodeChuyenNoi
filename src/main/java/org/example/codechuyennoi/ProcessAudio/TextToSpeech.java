@@ -1,55 +1,62 @@
 package org.example.codechuyennoi.ProcessAudio;
 
 import com.google.protobuf.ByteString;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
-public class TextToSpeech implements AutoCloseable {
-    private final String voice;
-    private final int speed;
+public class TextToSpeech {
+    private static final Logger logger = LoggerFactory.getLogger(TextToSpeech.class);
+    private static final String API_URL = "https://speech.aiservice.vn/tts/tools/demo";
 
-    public TextToSpeech(String voice, int speed) {
-        this.voice = voice;
-        this.speed = speed;
-    }
+    public ByteString synthesize(String text) throws IOException, InterruptedException {
 
-    public ByteString synthesize(String text) throws Exception {
-        if (text == null || text.trim().isEmpty()) {
-            throw new IllegalArgumentException("Văn bản đầu vào trống.");
+        // Tạo JSON body đúng định dạng
+        String json = String.format("""
+                {
+                  "text":"%s",
+                  "voice": "hcm_thanhthao",
+                  "speed": "1.0"
+                }
+                """, text.replace("\"", "\\\""));
+
+        // Tạo POST request
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new IOException("Gọi API thất bại: " + response.body());
+        } else {
+            System.out.println("✅ Gọi API thành công: " + response.body());
         }
 
-        // URL encode văn bản
-        String data = "text=" + URLEncoder.encode(text, StandardCharsets.UTF_8)
-                + "&voice=" + URLEncoder.encode(voice, StandardCharsets.UTF_8)
-                + "&speed=" + speed;
+        // Parse JSON để lấy link audio
+        String audioUrl = response.body().split("\"")[3];  // đơn giản, không dùng JSON parser
+        System.out.println("🎧 Link audio: " + audioUrl);
 
-        URL url = new URL("https://speech.aiservice.vn/tts/api/demo");
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-        conn.setDoOutput(true);
-
-        // Gửi request
-        conn.getOutputStream().write(data.getBytes(StandardCharsets.UTF_8));
-
-        // Đọc response là file audio
-        try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+        // Tải dữ liệu âm thanh từ link
+        URL url = new URL(audioUrl);
+        try (InputStream in = url.openStream(); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[4096];
-            int len;
-            while ((len = in.read(buffer)) > 0) {
-                out.write(buffer, 0, len);
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                baos.write(buffer, 0, n);
             }
-            return ByteString.copyFrom(out.toByteArray());
+            return ByteString.copyFrom(baos.toByteArray());
         }
-    }
-
-    @Override
-    public void close() {
-        // Không cần đóng gì thêm
     }
 }
