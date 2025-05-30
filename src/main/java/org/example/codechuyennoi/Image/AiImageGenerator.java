@@ -17,7 +17,7 @@ import java.util.*;
 public class AiImageGenerator {
 
     // Đường dẫn đến ảnh mẫu giả lập (placeholder)
-    private static final String PLACEHOLDER_IMAGE_PATH = "D:\\anhtrutien\\luctuyetki1.jpg"; // ảnh cố định dùng thay thế ảnh AI
+    private static final String PLACEHOLDER_IMAGE_PATH = "D:\\anhtrutien\\bichdao.jpg"; // ảnh cố định dùng thay thế ảnh AI
 
     /**
      * Sinh danh sách ảnh ứng với danh sách prompt truyền vào.

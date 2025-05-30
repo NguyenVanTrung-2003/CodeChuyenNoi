@@ -6,9 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
-
-/**
+ /**
  * Lớp VideoComposer chịu trách nhiệm tổng hợp video từ:
  * - Story (thông tin truyện/chương)
  * - AudioStory (file âm thanh)
@@ -18,68 +20,77 @@ import java.util.List;
 public class VideoComposer {
     private static final Logger logger = LoggerFactory.getLogger(VideoComposer.class);
 
-    private final String ffmpegPath;  // Đường dẫn đến ffmpeg.exe
-    private final String ffprobePath; // Đường dẫn đến ffprobe.exe dùng để lấy thông tin media
-    private  final VideoMerger videoMerger;
-    // Constructor khởi tạo VideoComposer với đường dẫn ffmpeg và ffprobe.
-    public VideoComposer(String ffmpegPath, String ffprobePath, VideoMerger videoMerger) {
-        this.ffmpegPath = ffmpegPath;
-        this.ffprobePath = ffprobePath;
-        this.videoMerger = new VideoMerger(ffmpegPath);
+    private final String ffmpegPath;
+    private final String ffprobePath;
+
+    public VideoComposer(String ffmpegPath, String ffprobePath) {
+        this.ffmpegPath = validateExecutable(ffmpegPath, "ffmpeg.path");
+        this.ffprobePath = validateExecutable(ffprobePath, "ffprobe.path");
     }
 
     /**
-     * Phương thức composeVideo tổng hợp video từ truyện, audio và danh sách ảnh.
-     *
-     * @param story       Thông tin truyện (tên truyện, chương, ...)
-     * @param audioStory  File âm thanh đã tạo từ text
-     * @param imagePaths  Danh sách đường dẫn ảnh sẽ dùng làm slideshow
-     * @param title       Tiêu đề video
-     * @param description Mô tả video
-     * @return VideoStory chứa thông tin video đã tạo hoặc null nếu lỗi
+     * Validates that the executable exists and is a file.
      */
+    private String validateExecutable(String path, String name) {
+        File file = new File(path);
+        if (!file.exists() || !file.isFile()) {
+            throw new IllegalArgumentException(name + " executable not found at: " + path);
+        }
+        return path;
+    }
+
     public VideoStory composeVideo(Story story, AudioStory audioStory, List<String> imagePaths, String title, String description) {
         if (story == null || audioStory == null || imagePaths == null || imagePaths.isEmpty()) {
             logger.warn("Thiếu đầu vào để tổng hợp video");
             return null;
         }
 
+        // Validate image files
+        for (String imagePath : imagePaths) {
+            if (!Files.exists(Paths.get(imagePath))) {
+                logger.error("Image file does not exist: {}", imagePath);
+                return null;
+            }
+        }
+
         logger.info("Đang ghép video cho truyện '{}', chương {}", story.getStoryName(), story.getChapterNumber());
         logger.info("File âm thanh: {}", audioStory.getAudioFilePath());
 
         try {
-            // Chuẩn hóa tên thư mục theo storyName: chữ thường, thay khoảng trắng bằng gạch dưới, bỏ dấu
-            String storyFolderName = "video_" + story.getStoryName();
+            // Normalize story name for folder
+            String storyFolderName = "video_" + story.getStoryName()
+                    .toLowerCase()
+                    .replaceAll("[^a-z0-9]+", "_")
+                    .replaceAll("^_+|_+$", "");
             String outputDir = "output/" + storyFolderName;
             File dir = new File(outputDir);
-            if (!dir.exists()) {
-                boolean created = dir.mkdirs();
-                if (!created) {
-                    logger.error("Không tạo được thư mục đầu ra: {}", outputDir);
-                    return null;
-                }
+            if (!dir.exists() && !dir.mkdirs()) {
+                logger.error("Không tạo được thư mục đầu ra: {}", outputDir);
+                return null;
             }
 
-            // Đường dẫn file video đầu ra nằm trong thư mục của truyện
             String outputPath = outputDir + "/video_chuong_" + story.getChapterNumber() + ".mp4";
             String slideshowPath = outputDir + "/slideshow_" + story.getChapterNumber() + ".mp4";
+            File slideshowInput = new File(outputDir + "/slideshow_input.txt");
 
-            // Lấy thời lượng audio
+            // Get audio duration
             double totalDuration = getAudioDuration(audioStory.getAudioFilePath());
+            if (totalDuration <= 0) {
+                logger.error("Thời lượng audio không hợp lệ: {}", totalDuration);
+                return null;
+            }
             double imageDuration = totalDuration / imagePaths.size();
 
-            // Tạo file input cho ffmpeg dạng concat
-            File slideshowInput = new File(outputDir + "/slideshow_input.txt");
+            // Create slideshow input file
             try (PrintWriter writer = new PrintWriter(slideshowInput)) {
                 for (String path : imagePaths) {
                     writer.println("file '" + path.replace("\\", "/") + "'");
                     writer.println("duration " + imageDuration);
                 }
-                // Ảnh cuối cùng được lặp lại để ffmpeg xử lý đúng
                 writer.println("file '" + imagePaths.get(imagePaths.size() - 1).replace("\\", "/") + "'");
             }
 
-            // Tạo slideshow video từ ảnh
+            // Create slideshow video
             List<String> cmd1 = List.of(
                     ffmpegPath, "-y",
                     "-f", "concat", "-safe", "0",
@@ -87,9 +98,9 @@ public class VideoComposer {
                     "-vsync", "vfr", "-pix_fmt", "yuv420p",
                     slideshowPath
             );
-            runCommand(cmd1);
+            runCommand(cmd1, "Tạo slideshow video");
 
-            // Ghép slideshow với audio
+            // Merge slideshow with audio
             List<String> cmd2 = List.of(
                     ffmpegPath, "-y",
                     "-i", slideshowPath,
@@ -99,14 +110,17 @@ public class VideoComposer {
                     "-shortest",
                     outputPath
             );
-            runCommand(cmd2);
+            runCommand(cmd2, "Ghép slideshow với audio");
 
             File outFile = new File(outputPath);
-            if (outFile.exists()) {
+            if (outFile.exists() && outFile.length() > 0) {
                 logger.info("Đã tạo video tại: {}", outputPath);
+                // Clean up temporary files
+                cleanupTempFiles(slideshowInput, new File(slideshowPath));
                 return new VideoStory(outputPath, title, description, null, audioStory, audioStory, null);
             } else {
-                logger.error("Không thể tạo video");
+                logger.error("File video đầu ra không tồn tại hoặc rỗng: {}", outputPath);
+                cleanupTempFiles(slideshowInput, new File(slideshowPath));
                 return null;
             }
         } catch (Exception e) {
@@ -114,21 +128,11 @@ public class VideoComposer {
             return null;
         }
     }
-    public String mergeChapterVideos(String storyFolderPath) {
-        logger.info("Bắt đầu nối video chương trong thư mục: {}", storyFolderPath);
-        String mergedVideoPath = videoMerger.mergeVideos(storyFolderPath);
-        if (mergedVideoPath != null) {
-            logger.info("Đã tạo video tổng tại: {}", mergedVideoPath);
-        } else {
-            logger.error("Nối video chương thất bại.");
-        }
-        return mergedVideoPath;
-    }
 
-    /**
-     * Lấy thời lượng file audio sử dụng ffprobe.
-     */
     private double getAudioDuration(String audioPath) throws IOException, InterruptedException {
+        if (!Files.exists(Paths.get(audioPath))) {
+            throw new IOException("File âm thanh không tồn tại: " + audioPath);
+        }
         ProcessBuilder pb = new ProcessBuilder(
                 ffprobePath, "-v", "error",
                 "-show_entries", "format=duration",
@@ -136,32 +140,40 @@ public class VideoComposer {
                 audioPath
         );
         Process process = pb.start();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        String line = reader.readLine();
-        process.waitFor();
-        if (line == null || line.isEmpty()) {
-            throw new IOException("Không lấy được độ dài âm thanh từ ffprobe.");
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line = reader.readLine();
+            int exitCode = process.waitFor();
+            if (exitCode != 0 || line == null || line.isEmpty()) {
+                throw new IOException("Không lấy được thời lượng âm thanh từ ffprobe. Exit code: " + exitCode);
+            }
+            return Double.parseDouble(line);
         }
-        return Double.parseDouble(line);
     }
 
-    /**
-     * Chạy lệnh ffmpeg hoặc ffprobe.
-     */
-    private void runCommand(List<String> command) throws IOException, InterruptedException {
+    private void runCommand(List<String> command, String operation) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.redirectErrorStream(true);
         Process process = pb.start();
+        StringBuilder ffmpegOutput = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                logger.info("ffmpeg: " + line);
+                ffmpegOutput.append(line).append("\n");
+                logger.debug("ffmpeg: {}", line);
             }
         }
         int exitCode = process.waitFor();
         if (exitCode != 0) {
+            logger.error("FFmpeg thất bại khi {}:\n{}", operation, ffmpegOutput);
             throw new RuntimeException("FFmpeg thất bại với mã lỗi: " + exitCode);
         }
     }
 
+    private void cleanupTempFiles(File... files) {
+        for (File file : files) {
+            if (file.exists() && !file.delete()) {
+                logger.warn("Không xóa được file tạm: {}", file.getAbsolutePath());
+            }
+        }
+    }
 }

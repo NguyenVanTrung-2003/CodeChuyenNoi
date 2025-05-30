@@ -97,14 +97,14 @@ public class YouTubeUploader {
 
             // Thiết lập trạng thái (công khai)
             VideoStatus status = new VideoStatus();
-            status.setPrivacyStatus("public"); // Có thể đổi thành "private" hoặc "unlisted"
+            status.setPrivacyStatus("public");
             videoObject.setStatus(status);
 
             // Thiết lập tiêu đề, mô tả, thẻ tag
             VideoSnippet snippet = new VideoSnippet();
-            snippet.setTitle("Auto-generated Story Video"); // Có thể thay đổi tùy theo truyện
-            snippet.setDescription(metadata); // Mô tả do hệ thống sinh
-            snippet.setTags(List.of("story", "ai", "generated")); // Thẻ tìm kiếm
+            snippet.setTitle(videoStory.getTitle()); // Sử dụng tiêu đề từ VideoStory
+            snippet.setDescription(metadata);
+            snippet.setTags(List.of("story", "ai", "generated"));
             videoObject.setSnippet(snippet);
 
             // Chuẩn bị nội dung video
@@ -113,16 +113,16 @@ public class YouTubeUploader {
                     "video/*", Files.newInputStream(mediaFile.toPath())
             );
 
-            // Tạo yêu cầu upload video với phần metadata và nội dung
+            // Tạo yêu cầu upload video
             YouTube.Videos.Insert videoInsert = youTube.videos()
                     .insert("snippet,status", videoObject, mediaContent);
 
-            // Tải video dạng chunk (không trực tiếp)
+            // Tải video dạng chunk
             videoInsert.getMediaHttpUploader().setDirectUploadEnabled(false);
 
-            // Gửi yêu cầu và nhận lại video sau khi đã upload
+            // Gửi yêu cầu và nhận videoId
             Video returnedVideo = videoInsert.execute();
-            String videoId = returnedVideo.getId(); // ID video sau khi upload thành công
+            String videoId = returnedVideo.getId();
 
             logger.info("Đã tải video lên YouTube, ID: {}", videoId);
             return videoId;
