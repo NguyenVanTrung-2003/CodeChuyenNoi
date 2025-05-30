@@ -16,6 +16,7 @@ import org.example.codechuyennoi.ProcessAudio.AudioStory;
 import org.example.codechuyennoi.ProcessStory.Story;
 import org.example.codechuyennoi.ProcessStory.StoryProcessor;
 import org.example.codechuyennoi.ProcessVideo.VideoComposer;
+import org.example.codechuyennoi.ProcessVideo.VideoMerger;
 import org.example.codechuyennoi.ProcessVideo.VideoStory;
 import org.example.codechuyennoi.Integation.YouTubeUploader;
 import org.slf4j.Logger;
@@ -64,7 +65,8 @@ public class WorkflowCoordinator {
         this.audioGenerator = new AudioGenerator();
         this.audioProcessor = new AudioProcessor();
         this.aiImageGenerator = new AiImageGenerator(); // Có thể thay bằng AI thật sau này
-        this.videoComposer = new VideoComposer(ffmpegPath, ffprobePath);
+        VideoMerger videoMerger = new VideoMerger(ffmpegPath);
+        this.videoComposer = new VideoComposer(ffmpegPath, ffprobePath, videoMerger);
         this.metadataCreator = new MetadataCreator();
         this.youTubeUploader = new YouTubeUploader(clientSecretPath);
         this.notificationService = new NotificationService();
@@ -82,9 +84,9 @@ public class WorkflowCoordinator {
             for (Story story : processedStories) {
                 // Bước 1: Chuyển văn bản thành audio (Text-to-Speech)
                 AudioStory audioStory = generateAudio(story);
-                // VideoStory videoStory = composeVideo(story, audioStory);
-                // String youtubeId = uploadToYouTube(videoStory);
-                // sendSuccessNotification(youtubeId);
+                VideoStory videoStory = composeVideo(story, audioStory);
+                //String youtubeId = uploadToYouTube(videoStory);
+                //sendSuccessNotification(youtubeId);
             }
         } catch (Exception e) {
             logger.error("Lỗi nghiêm trọng trong quy trình batch: {}", e.getMessage(), e);
@@ -101,15 +103,30 @@ public class WorkflowCoordinator {
 
      // Tạo video từ ảnh + audio + metadata.
      //Khi dùng AI thật, `aiImageGenerator.generateImages(...)` sẽ sinh ảnh thực.
-    private VideoStory composeVideo(Story story, AudioStory audioStory) {
-        List<String> prompts = story.getSentences(); // Câu mô tả ảnh
-        List<String> imagePaths = aiImageGenerator.generateImages(prompts); // Dùng ảnh mẫu hoặc AI
-        String title = "Chuyện cổ tích";
-        String description = "Video kể chuyện tự động được tạo bởi hệ thống.";
-        return videoComposer.composeVideo(story, audioStory, imagePaths, title, description);
-    }
+     private VideoStory composeVideo(Story story, AudioStory audioStory) {
+         List<String> prompts = story.getSentences(); // Câu mô tả ảnh
+         List<String> imagePaths = aiImageGenerator.generateImages(prompts); // Dùng ảnh mẫu hoặc AI
+         String title = "Chuyện cổ tích";
+         String description = "Video kể chuyện tự động được tạo bởi hệ thống.";
+         // Bước 1: Tạo video chương riêng như bình thường
+         VideoStory chapterVideo = videoComposer.composeVideo(story, audioStory, imagePaths, title, description);
+         if (chapterVideo == null) {
+             logger.error("❌ Tạo video chương thất bại cho chương: {}", story.getChapterNumber());
+             return null;
+         }
+         // Bước 2: Lấy folder chứa video các chương
+         String storyFolder = "output/video_" + story.getStoryName();
+         // Bước 3: Gộp video chương thành video tổng bằng hàm đã có log chi tiết
+         String fullVideoPath = videoComposer.mergeChapterVideos(storyFolder);
+         if (fullVideoPath == null) {
+             logger.error("❌ Gộp video chương thất bại cho truyện: {}", story.getStoryName());
+             return null;
+         }
+         // Bước 4: Trả về VideoStory đại diện cho video tổng
+         return new VideoStory(fullVideoPath, title, description, null, audioStory, audioStory, null);
+     }
 
-     //Tải video lên YouTube.
+    //Tải video lên YouTube.
     private String uploadToYouTube(VideoStory videoStory) throws IOException {
         String metadata = metadataCreator.createMetadata("Chuyện cổ tích", "Tự động tạo video kể chuyện.");
         return youTubeUploader.uploadVideo(videoStory, metadata);

@@ -35,7 +35,7 @@ public class AiImageGenerator {
 
         // Lặp qua từng prompt và tạo ảnh tương ứng
         for (int i = 0; i < prompts.size(); i++) {
-            String outputPath = outputDir.getPath() + "/ai_img_" + i + ".jpg";
+            String outputPath = new File(outputDir, "ai_img_" + i + ".jpg").getAbsolutePath();
             try {
                 /**
                  * 🔁 Tạm thời: Copy ảnh mẫu cho mỗi prompt.

@@ -4,87 +4,52 @@ import com.google.protobuf.ByteString;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 public class TextToSpeech implements AutoCloseable {
-    private final String espeakExecutable;
     private final String voice;
-    private final int speed;      // tốc độ nói (words per minute)
-    private final int amplitude;  // âm lượng (0–200)
+    private final int speed;
 
-    // ✅ Hàm khởi tạo có đường dẫn tuyệt đối
-    public TextToSpeech(String voice, int speed, int amplitude) {
-        // Dùng đường dẫn tuyệt đối đến espeak.exe
-        this("D:\\eSpeak\\command_line\\espeak.exe", voice, speed, amplitude);
-    }
-
-    public TextToSpeech(String espeakExecutable, String voice, int speed, int amplitude) {
-        this.espeakExecutable = espeakExecutable;
+    public TextToSpeech(String voice, int speed) {
         this.voice = voice;
         this.speed = speed;
-        this.amplitude = amplitude;
     }
 
-    /**
-     * Gọi eSpeak để synthesize văn bản thành WAV bytes.
-     *
-     * @param text văn bản cần đọc
-     * @return ByteString chứa dữ liệu WAV
-     * @throws Exception nếu quá trình bị lỗi
-     */
     public ByteString synthesize(String text) throws Exception {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("Văn bản đầu vào trống.");
         }
 
-        // Loại bỏ dấu "
-        text = text.replace("\"", "");
+        // URL encode văn bản
+        String data = "text=" + URLEncoder.encode(text, StandardCharsets.UTF_8)
+                + "&voice=" + URLEncoder.encode(voice, StandardCharsets.UTF_8)
+                + "&speed=" + speed;
 
-        List<String> cmd = new ArrayList<>();
-        cmd.add(espeakExecutable);
-        cmd.add("--stdin");   // ✅ Đọc văn bản từ stdin
-        cmd.add("--stdout");
-        cmd.add("-v");
-        cmd.add(voice);
-        cmd.add("-s");
-        cmd.add(String.valueOf(speed));
-        cmd.add("-a");
-        cmd.add(String.valueOf(amplitude));
+        URL url = new URL("https://speech.aiservice.vn/tts/api/demo");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        conn.setDoOutput(true);
 
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+        // Gửi request
+        conn.getOutputStream().write(data.getBytes(StandardCharsets.UTF_8));
 
-        Process process = pb.start();
-
-        // ✅ Ghi văn bản vào stdin của eSpeak
-        try (var stdin = process.getOutputStream()) {
-            stdin.write(text.getBytes());
-            stdin.flush();
-        }
-
-        // ✅ Đọc WAV đầu ra từ stdout
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (InputStream is = process.getInputStream()) {
-            byte[] buf = new byte[4096];
+        // Đọc response là file audio
+        try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
             int len;
-            while ((len = is.read(buf)) > 0) {
-                baos.write(buf, 0, len);
+            while ((len = in.read(buffer)) > 0) {
+                out.write(buffer, 0, len);
             }
+            return ByteString.copyFrom(out.toByteArray());
         }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("eSpeak lỗi, mã thoát: " + exitCode);
-        }
-
-        return ByteString.copyFrom(baos.toByteArray());
     }
-
-
 
     @Override
     public void close() {
-        // Không cần close gì thêm
+        // Không cần đóng gì thêm
     }
 }

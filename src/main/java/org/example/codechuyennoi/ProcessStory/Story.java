@@ -18,6 +18,8 @@ public class Story {
         this.chapterNumber = chapterNumber;
         this.storyName = storyName;
     }
+
+
     /**
      * Trích xuất danh sách các câu từ processedText.
      * Dựa trên dấu kết thúc câu: '.', '!', '?' và khoảng trắng sau đó.
@@ -27,5 +29,8 @@ public class Story {
     public List<String> getSentences() {
         if (processedText == null || processedText.isBlank()) return List.of();
         return List.of(processedText.split("(?<=[.!?])\\s+")); // Tách câu theo dấu câu kết thúc
+    }
+    public String getChapterText() {
+        return processedText != null ? processedText : "";
     }
 }

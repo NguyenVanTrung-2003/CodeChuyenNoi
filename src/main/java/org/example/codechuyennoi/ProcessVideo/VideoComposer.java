@@ -8,7 +8,8 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.util.List;
 
-/** Lớp VideoComposer chịu trách nhiệm tổng hợp video từ:
+/**
+ * Lớp VideoComposer chịu trách nhiệm tổng hợp video từ:
  * - Story (thông tin truyện/chương)
  * - AudioStory (file âm thanh)
  * - Danh sách ảnh để tạo slideshow
@@ -19,23 +20,25 @@ public class VideoComposer {
 
     private final String ffmpegPath;  // Đường dẫn đến ffmpeg.exe
     private final String ffprobePath; // Đường dẫn đến ffprobe.exe dùng để lấy thông tin media
-
-     // Constructor khởi tạo VideoComposer với đường dẫn ffmpeg và ffprobe.
-
-    public VideoComposer(String ffmpegPath, String ffprobePath) {
+    private  final VideoMerger videoMerger;
+    // Constructor khởi tạo VideoComposer với đường dẫn ffmpeg và ffprobe.
+    public VideoComposer(String ffmpegPath, String ffprobePath, VideoMerger videoMerger) {
         this.ffmpegPath = ffmpegPath;
         this.ffprobePath = ffprobePath;
+        this.videoMerger = new VideoMerger(ffmpegPath);
     }
 
-    /**  Phương thức composeVideo tổng hợp video từ truyện, audio và danh sách ảnh.
+    /**
+     * Phương thức composeVideo tổng hợp video từ truyện, audio và danh sách ảnh.
      *
-     * @param story Thông tin truyện (tên truyện, chương, ...)
-     * @param audioStory File âm thanh đã tạo từ text
-     * @param imagePaths Danh sách đường dẫn ảnh sẽ dùng làm slideshow
+     * @param story       Thông tin truyện (tên truyện, chương, ...)
+     * @param audioStory  File âm thanh đã tạo từ text
+     * @param imagePaths  Danh sách đường dẫn ảnh sẽ dùng làm slideshow
+     * @param title       Tiêu đề video
+     * @param description Mô tả video
      * @return VideoStory chứa thông tin video đã tạo hoặc null nếu lỗi
      */
     public VideoStory composeVideo(Story story, AudioStory audioStory, List<String> imagePaths, String title, String description) {
-        // Kiểm tra đầu vào bắt buộc
         if (story == null || audioStory == null || imagePaths == null || imagePaths.isEmpty()) {
             logger.warn("Thiếu đầu vào để tổng hợp video");
             return null;
@@ -44,28 +47,39 @@ public class VideoComposer {
         logger.info("Đang ghép video cho truyện '{}', chương {}", story.getStoryName(), story.getChapterNumber());
         logger.info("File âm thanh: {}", audioStory.getAudioFilePath());
 
-        String outputPath = "output/video_" + System.currentTimeMillis() + ".mp4";   // Video đầu ra cuối cùng
-        String slideshowPath = "output/slideshow_" + story.getChapterNumber() + ".mp4"; // File slideshow trung gian
-
         try {
-            // Lấy độ dài audio để tính thời gian hiển thị mỗi ảnh (chia đều)
+            // Chuẩn hóa tên thư mục theo storyName: chữ thường, thay khoảng trắng bằng gạch dưới, bỏ dấu
+            String storyFolderName = "video_" + story.getStoryName();
+            String outputDir = "output/" + storyFolderName;
+            File dir = new File(outputDir);
+            if (!dir.exists()) {
+                boolean created = dir.mkdirs();
+                if (!created) {
+                    logger.error("Không tạo được thư mục đầu ra: {}", outputDir);
+                    return null;
+                }
+            }
+
+            // Đường dẫn file video đầu ra nằm trong thư mục của truyện
+            String outputPath = outputDir + "/video_chuong_" + story.getChapterNumber() + ".mp4";
+            String slideshowPath = outputDir + "/slideshow_" + story.getChapterNumber() + ".mp4";
+
+            // Lấy thời lượng audio
             double totalDuration = getAudioDuration(audioStory.getAudioFilePath());
             double imageDuration = totalDuration / imagePaths.size();
 
-            // Tạo file input danh sách ảnh cho ffmpeg (định dạng concat)
-            File slideshowInput = new File("slideshow_input.txt");
+            // Tạo file input cho ffmpeg dạng concat
+            File slideshowInput = new File(outputDir + "/slideshow_input.txt");
             try (PrintWriter writer = new PrintWriter(slideshowInput)) {
                 for (String path : imagePaths) {
-                    // ffmpeg yêu cầu đường dẫn file dạng Unix-style (dùng /)
                     writer.println("file '" + path.replace("\\", "/") + "'");
-                    // Thời gian hiển thị mỗi ảnh
                     writer.println("duration " + imageDuration);
                 }
-                // Đảm bảo ảnh cuối cùng cũng được hiển thị
+                // Ảnh cuối cùng được lặp lại để ffmpeg xử lý đúng
                 writer.println("file '" + imagePaths.get(imagePaths.size() - 1).replace("\\", "/") + "'");
             }
 
-            // Bước 1: Tạo slideshow video từ ảnh theo file input vừa tạo
+            // Tạo slideshow video từ ảnh
             List<String> cmd1 = List.of(
                     ffmpegPath, "-y",
                     "-f", "concat", "-safe", "0",
@@ -73,41 +87,46 @@ public class VideoComposer {
                     "-vsync", "vfr", "-pix_fmt", "yuv420p",
                     slideshowPath
             );
-            runCommand(cmd1); // Thực thi lệnh ffmpeg
+            runCommand(cmd1);
 
-            // Bước 2: Ghép slideshow video với file audio
+            // Ghép slideshow với audio
             List<String> cmd2 = List.of(
                     ffmpegPath, "-y",
                     "-i", slideshowPath,
                     "-i", audioStory.getAudioFilePath(),
-                    "-c:v", "copy",  // Copy video stream không mã hóa lại
-                    "-c:a", "aac",   // Mã hóa audio sang AAC
-                    "-shortest",     // Kết thúc khi audio hoặc video kết thúc (dùng để đồng bộ)
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-shortest",
                     outputPath
             );
             runCommand(cmd2);
 
-            // Kiểm tra file video đầu ra
             File outFile = new File(outputPath);
             if (outFile.exists()) {
                 logger.info("Đã tạo video tại: {}", outputPath);
-                // Tạo đối tượng VideoStory trả về (tham số null bạn có thể sửa theo class bạn định nghĩa)
                 return new VideoStory(outputPath, title, description, null, audioStory, audioStory, null);
             } else {
                 logger.error("Không thể tạo video");
                 return null;
             }
-
         } catch (Exception e) {
             logger.error("Lỗi khi tổng hợp video: {}", e.getMessage(), e);
             return null;
         }
     }
+    public String mergeChapterVideos(String storyFolderPath) {
+        logger.info("Bắt đầu nối video chương trong thư mục: {}", storyFolderPath);
+        String mergedVideoPath = videoMerger.mergeVideos(storyFolderPath);
+        if (mergedVideoPath != null) {
+            logger.info("Đã tạo video tổng tại: {}", mergedVideoPath);
+        } else {
+            logger.error("Nối video chương thất bại.");
+        }
+        return mergedVideoPath;
+    }
 
-    /** Lấy độ dài (thời gian) của file audio bằng ffprobe.
-     *
-     * @param audioPath đường dẫn file audio
-     * @return thời lượng file audio (đơn vị giây)
+    /**
+     * Lấy thời lượng file audio sử dụng ffprobe.
      */
     private double getAudioDuration(String audioPath) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(
@@ -126,15 +145,12 @@ public class VideoComposer {
         return Double.parseDouble(line);
     }
 
-    /** Thực thi lệnh FFmpeg hoặc ffprobe được truyền vào dưới dạng List<String>.
-     * Ghi log output của ffmpeg, kiểm tra mã thoát.
-     *
-     * @param command danh sách chuỗi lệnh để chạy
-     * @throws IOException, InterruptedException nếu lệnh không thành công
+    /**
+     * Chạy lệnh ffmpeg hoặc ffprobe.
      */
     private void runCommand(List<String> command) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true); // Gộp cả output lỗi vào output chuẩn
+        pb.redirectErrorStream(true);
         Process process = pb.start();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
@@ -147,4 +163,5 @@ public class VideoComposer {
             throw new RuntimeException("FFmpeg thất bại với mã lỗi: " + exitCode);
         }
     }
+
 }

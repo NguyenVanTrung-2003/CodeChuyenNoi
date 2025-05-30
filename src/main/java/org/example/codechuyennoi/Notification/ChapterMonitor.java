@@ -63,7 +63,7 @@ public class ChapterMonitor implements Runnable {
                     handleNoNewChapters(); // Không có chương mới, kiểm tra chương bị thiếu
                 }
 
-                Thread.sleep(5 * 60 * 1000); // Ngủ 5 phút trước khi kiểm tra tiếp
+                Thread.sleep(15 * 60 * 1000); // Ngủ 5 phút trước khi kiểm tra tiếp
             } catch (InterruptedException e) {
                 logger.info("ChapterMonitor bị dừng bởi interrupt.");
                 Thread.currentThread().interrupt(); // Đảm bảo dừng đúng cách
