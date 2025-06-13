@@ -2,12 +2,14 @@ package org.example.codechuyennoi.ProcessAudio;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.io.File;
 
 /**
  * Lớp AudioProcessor chịu trách nhiệm xử lý file âm thanh đã được tạo từ văn bản.
  */
+@Service
 public class AudioProcessor {
 
     private static final Logger logger = LoggerFactory.getLogger(AudioProcessor.class);
@@ -20,13 +22,11 @@ public class AudioProcessor {
      * @return đối tượng AudioStory nếu xử lý thành công hoặc chưa cần xử lý, null nếu có lỗi
      */
     public AudioStory processAudio(AudioStory audio) {
-        // Kiểm tra đầu vào hợp lệ
         if (audio == null || audio.getAudioFilePath() == null) {
             logger.warn("Đối tượng AudioStory hoặc đường dẫn file bị null.");
             return null;
         }
 
-        // Kiểm tra file thực sự tồn tại trên hệ thống
         File audioFile = new File(audio.getAudioFilePath());
         if (!audioFile.exists()) {
             logger.warn("File không tồn tại tại đường dẫn: {}", audio.getAudioFilePath());

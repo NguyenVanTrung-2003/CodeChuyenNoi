@@ -3,6 +3,7 @@ package org.example.codechuyennoi.ProcessAudio;
 import com.google.protobuf.ByteString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -13,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
+@Service
 public class TextToSpeech {
     private static final Logger logger = LoggerFactory.getLogger(TextToSpeech.class);
     private static final String API_URL = "https://speech.aiservice.vn/tts/tools/demo";

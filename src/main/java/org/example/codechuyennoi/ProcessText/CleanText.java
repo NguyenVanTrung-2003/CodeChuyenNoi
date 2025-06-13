@@ -15,13 +15,14 @@ public class CleanText {
         }
         try {
             logger.info("Đang làm sạch văn bản");
-            // Bước 1: Chuẩn hóa đầu vào (nếu cần)
             String text = rawText;
-            // Bước 2: Loại bỏ các đoạn quảng cáo hay gặp
             text = removeAds(text);
-            // Bước 3: Loại bỏ ký tự đặc biệt, khoảng trắng thừa
-            String cleanedText = text.replaceAll("[^\\p{L}\\p{N}\\s.,!?]", "")
-                    .replaceAll("\\s+", " ")
+
+            // Chỉ loại bỏ ký tự đặc biệt không cần thiết, giữ lại câu và ngắt dòng
+            String cleanedText = text
+                    .replaceAll("[^\\p{L}\\p{N}\\s.,!?\"“”‘’]", "")  // giữ lại câu và dấu hợp lệ
+                    .replaceAll("\\s+", " ")                          // gom khoảng trắng
+                    .replaceAll("(?m)^\\s*", "")                      // xóa khoảng trắng đầu dòng
                     .trim();
             return cleanedText;
         } catch (Exception e) {
@@ -29,9 +30,11 @@ public class CleanText {
             return "";
         }
     }
+
     private String removeAds(String text) {
         // Danh sách các mẫu quảng cáo phổ biến
         String[] adPatterns = {
+                "🍊",
                 "Đọc truyện tại[^\\n]*",           // ví dụ: Đọc truyện tại abc.xyz
                 "Nhấn theo dõi[^\\n]*",            // ví dụ: Nhấn theo dõi để xem chương tiếp
                 "Chương mới nhất tại[^\\n]*",

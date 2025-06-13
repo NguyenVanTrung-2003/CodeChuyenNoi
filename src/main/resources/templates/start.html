@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Bắt đầu xử lý truyện</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to right, #a1c4fd, #c2e9fb);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .form-container {
+            background-color: white;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .form-container h1 {
+            margin-bottom: 24px;
+            text-align: center;
+            color: #333;
+        }
+
+        label {
+            display: block;
+            margin-top: 16px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 6px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        button {
+            margin-top: 24px;
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            border: none;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .error {
+            color: red;
+            margin-top: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .message {
+            color: green;
+            margin-top: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="form-container">
+    <h1>Nhập thông tin truyện</h1>
+
+    <form th:action="@{/start}" method="post">
+        <label>Đường dẫn gốc:</label>
+        <input type="text" name="baseUrl" th:value="${defaultBaseUrl}" required/>
+
+        <label>Tên truyện:</label>
+        <input type="text" name="storyName" required/>
+
+        <label>Chương bắt đầu:</label>
+        <input type="number" name="startChapter" th:value="${defaultStartChapter}" required/>
+
+        <label>Chương kết thúc (số hoặc * để lấy tất cả):</label>
+        <input type="text" name="endChapterInput" th:value="${defaultEndChapter}" required/>
+        <label>Tiêu đề video (tùy chọn):</label>
+        <input type="text" name="videoTitle" placeholder="Nhập tiêu đề đăng tải lên youtobe">
+
+        <label>Mô tả video (tùy chọn):</label>
+        <input type="text" name="videoDescription" placeholder="Nhập mô tả đăng tải lên youtobe">
+        <button type="submit">Bắt đầu</button>
+
+        <div class="error" th:if="${error}" th:text="${error}"></div>
+        <div class="message" th:if="${message}" th:text="${message}"></div>
+    </form>
+</div>
+</body>
+</html>

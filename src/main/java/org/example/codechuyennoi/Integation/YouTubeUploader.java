@@ -1,10 +1,13 @@
 package org.example.codechuyennoi.Integation;
 
+import com.google.api.client.auth.oauth2.AuthorizationCodeRequestUrl;
 import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleClientSecrets;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.InputStreamContent;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
@@ -12,10 +15,12 @@ import com.google.api.services.youtube.YouTube;
 import com.google.api.services.youtube.model.Video;
 import com.google.api.services.youtube.model.VideoSnippet;
 import com.google.api.services.youtube.model.VideoStatus;
-
+import org.springframework.beans.factory.annotation.Value;
+import jakarta.annotation.PostConstruct;
 import org.example.codechuyennoi.ProcessVideo.VideoStory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.FileReader;
@@ -23,104 +28,114 @@ import java.nio.file.Files;
 import java.util.Collections;
 import java.util.List;
 
- // Lớp YouTubeUploader xử lý việc xác thực và tải video lên YouTube
-
+@Service
 public class YouTubeUploader {
     private static final Logger logger = LoggerFactory.getLogger(YouTubeUploader.class);
+    private static final String APPLICATION_NAME = "StoryProcessor";
+    private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
 
-    private static final String APPLICATION_NAME = "StoryProcessor"; // Tên ứng dụng
-    private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance(); // Factory xử lý JSON
-    private final YouTube youTube; // Đối tượng YouTube dùng để gọi API
+    private YouTube youTube;
 
-    /** Constructor: Khởi tạo YouTube client với xác thực OAuth2
-     * @param clientSecretPath Đường dẫn đến file client_secret.json của Google
-     */
-    public YouTubeUploader(String clientSecretPath) {
+    @Value("${google.oauth.client.secret.path}")
+    private String clientSecretPath;
+
+    @PostConstruct
+    public void init() {
+        initYouTubeClient(clientSecretPath);
+    }
+
+    public void initYouTubeClient(String clientSecretPath) {
         try {
-            var httpTransport = GoogleNetHttpTransport.newTrustedTransport(); // Giao thức HTTP bảo mật
-            var credential = authorize(httpTransport, clientSecretPath); // Xác thực OAuth2
-
+            var httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+            var credential = authorize(httpTransport, clientSecretPath);
             this.youTube = new YouTube.Builder(httpTransport, JSON_FACTORY, credential)
                     .setApplicationName(APPLICATION_NAME)
-                    .build(); // Tạo YouTube API client
+                    .build();
         } catch (Exception e) {
-            logger.error("Lỗi khi khởi tạo YouTube client: {}", e.getMessage());
+            logger.error("Lỗi khi khởi tạo YouTube client: {}", e.getMessage(), e);
             throw new RuntimeException("Không thể khởi tạo YouTube client", e);
         }
     }
 
-    /**
-     * Thực hiện xác thực OAuth2 với Google API để có quyền upload video
-     * @param httpTransport Kết nối HTTP
-     * @param clientSecretPath Đường dẫn đến file client_secret.json
-     * @return Credential sau khi xác thực
-     */
-    private Credential authorize(com.google.api.client.http.HttpTransport httpTransport, String clientSecretPath) throws Exception {
-        // Đọc thông tin client từ file JSON
+    private Credential authorize(HttpTransport httpTransport, String clientSecretPath) throws Exception {
         GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(
                 JSON_FACTORY, new FileReader(clientSecretPath)
         );
 
-        // Chỉ định quyền cần thiết: upload video lên YouTube
         List<String> scopes = Collections.singletonList("https://www.googleapis.com/auth/youtube.upload");
 
-        // Tạo luồng xác thực OAuth
         GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
                 httpTransport, JSON_FACTORY, clientSecrets, scopes
-        ).setAccessType("offline").build(); // offline để lấy refresh_token
+        ).setAccessType("offline").build();
 
-        // Tạo LocalServerReceiver để mở trình duyệt xác thực OAuth
         LocalServerReceiver receiver = new LocalServerReceiver.Builder().setPort(8888).build();
 
-        // Thực hiện xác thực và trả về credential
-        return new com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp(flow, receiver)
-                .authorize("user");
+        AuthorizationCodeInstalledApp app = new AuthorizationCodeInstalledApp(flow, receiver) {
+            @Override
+            protected void onAuthorization(AuthorizationCodeRequestUrl authorizationUrl) {
+                try {
+                    String url = authorizationUrl.build();
+                    logger.warn("⚠️ Không hỗ trợ mở trình duyệt tự động. Vui lòng mở tay: {}", url);
+
+                    String os = System.getProperty("os.name").toLowerCase();
+                    if (java.awt.Desktop.isDesktopSupported()) {
+                        java.awt.Desktop.getDesktop().browse(new java.net.URI(url));
+                    } else if (os.contains("win")) {
+                        Runtime.getRuntime().exec(new String[]{"rundll32", "url.dll,FileProtocolHandler", url});
+                    } else if (os.contains("mac")) {
+                        Runtime.getRuntime().exec(new String[]{"open", url});
+                    } else if (os.contains("nix") || os.contains("nux")) {
+                        Runtime.getRuntime().exec(new String[]{"xdg-open", url});
+                    } else {
+                        logger.warn("⚠️ Không thể mở URL tự động. Vui lòng copy thủ công: {}", url);
+                    }
+                } catch (Exception e) {
+                    logger.error("❌ Lỗi khi cố mở trình duyệt: {}", e.getMessage(), e);
+                }
+            }
+        };
+
+        return app.authorize("user");
+
     }
 
-    /**
-     * Tải video lên YouTube dựa trên thông tin videoStory và metadata
-     * @param videoStory Đối tượng chứa đường dẫn video
-     * @param metadata Mô tả thêm cho video
-     * @return videoId nếu thành công, null nếu lỗi
-     */
-    public String uploadVideo(VideoStory videoStory, String metadata) {
+    public String uploadVideo(VideoStory videoStory, String videoTitle, String videoDescription) {
         if (videoStory == null || videoStory.getVideoFilePath() == null) {
             logger.warn("File video rỗng");
+            return null;
+        }
+
+        if (this.youTube == null) {
+            logger.error("YouTube client chưa được khởi tạo.");
             return null;
         }
 
         try {
             logger.info("Đang tải video lên YouTube: {}", videoStory.getVideoFilePath());
 
-            // Tạo đối tượng Video metadata
             Video videoObject = new Video();
-
-            // Thiết lập trạng thái (công khai)
             VideoStatus status = new VideoStatus();
             status.setPrivacyStatus("public");
             videoObject.setStatus(status);
 
-            // Thiết lập tiêu đề, mô tả, thẻ tag
             VideoSnippet snippet = new VideoSnippet();
-            snippet.setTitle(videoStory.getTitle()); // Sử dụng tiêu đề từ VideoStory
-            snippet.setDescription(metadata);
+
+            // Nếu không nhập, dùng tiêu đề và mô tả mặc định trong videoStory
+            snippet.setTitle(videoTitle != null && !videoTitle.isBlank() ? videoTitle : videoStory.getTitle());
+            snippet.setDescription(videoDescription != null && !videoDescription.isBlank() ? videoDescription : "");  // Hoặc videoStory.getDescription() nếu có
+
             snippet.setTags(List.of("story", "ai", "generated"));
             videoObject.setSnippet(snippet);
 
-            // Chuẩn bị nội dung video
             File mediaFile = new File(videoStory.getVideoFilePath());
             InputStreamContent mediaContent = new InputStreamContent(
                     "video/*", Files.newInputStream(mediaFile.toPath())
             );
 
-            // Tạo yêu cầu upload video
             YouTube.Videos.Insert videoInsert = youTube.videos()
                     .insert("snippet,status", videoObject, mediaContent);
-
-            // Tải video dạng chunk
             videoInsert.getMediaHttpUploader().setDirectUploadEnabled(false);
 
-            // Gửi yêu cầu và nhận videoId
             Video returnedVideo = videoInsert.execute();
             String videoId = returnedVideo.getId();
 
@@ -128,8 +143,10 @@ public class YouTubeUploader {
             return videoId;
 
         } catch (Exception e) {
-            logger.error("Lỗi khi tải video lên YouTube: {}", e.getMessage());
+            logger.error("Lỗi khi tải video lên YouTube: {}", e.getMessage(), e);
             return null;
         }
     }
+
 }
+

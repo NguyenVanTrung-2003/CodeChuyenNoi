@@ -1,10 +1,13 @@
 package org.example.codechuyennoi.Image;
 
+import org.springframework.stereotype.Service;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Lớp giả lập việc sinh ảnh AI từ danh sách prompt (câu mô tả).
@@ -14,6 +17,7 @@ import java.util.*;
  * thay đoạn code trong phương thức `generateImages(...)`
  * và thay thế `copyPlaceholderImage(...)` bằng logic gọi API sinh ảnh.
  */
+@Service
 public class AiImageGenerator {
 
     // Đường dẫn đến ảnh mẫu giả lập (placeholder)

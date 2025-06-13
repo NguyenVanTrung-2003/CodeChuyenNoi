@@ -2,6 +2,8 @@ package org.example.codechuyennoi.ProcessVideo;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -12,11 +14,14 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Service
 public class VideoMerger {
     private static final Logger logger = LoggerFactory.getLogger(VideoMerger.class);
+
     private final String ffmpegPath;
 
-    public VideoMerger(String ffmpegPath) {
+    // Inject giá trị ffmpegPath từ application.properties hoặc application.yml
+    public VideoMerger(@Value("${ffmpeg.path}") String ffmpegPath) {
         this.ffmpegPath = validateExecutable(ffmpegPath, "FFmpeg");
     }
 
@@ -29,6 +34,11 @@ public class VideoMerger {
     }
 
     public String mergeVideos(String storyFolderPath) {
+        if (storyFolderPath == null || storyFolderPath.isBlank()) {
+            logger.error("Đường dẫn thư mục trống hoặc null");
+            return null;
+        }
+
         Path folderPath = Paths.get(storyFolderPath).toAbsolutePath().normalize();
         File folder = folderPath.toFile();
         if (!folder.isDirectory() || !Files.isReadable(folderPath) || !Files.isWritable(folderPath)) {
@@ -44,15 +54,7 @@ public class VideoMerger {
 
         List<File> videoFiles = Arrays.stream(videoFilesArray)
                 .filter(file -> file.length() > 0)
-                .sorted(Comparator.comparingInt(f -> {
-                    try {
-                        String numStr = f.getName().substring(f.getName().indexOf("_chuong_") + "_chuong_".length(), f.getName().lastIndexOf('.'));
-                        return Integer.parseInt(numStr);
-                    } catch (NumberFormatException | StringIndexOutOfBoundsException e) {
-                        logger.warn("Bỏ qua file video không đúng định dạng: {}", f.getName());
-                        return Integer.MAX_VALUE;
-                    }
-                }))
+                .sorted(Comparator.comparingInt(this::extractChapterNumber))
                 .collect(Collectors.toList());
 
         if (videoFiles.isEmpty()) {
@@ -60,7 +62,8 @@ public class VideoMerger {
             return null;
         }
 
-        logger.info("Tìm thấy {} file video chương: {}", videoFiles.size(), videoFiles.stream().map(File::getName).collect(Collectors.joining(", ")));
+        logger.info("Tìm thấy {} file video chương:", videoFiles.size());
+        videoFiles.forEach(f -> logger.info(" - {} ({} bytes)", f.getName(), f.length()));
 
         File concatFile = new File(folder, "concat_list.txt");
         try (PrintWriter writer = new PrintWriter(concatFile)) {
@@ -74,11 +77,9 @@ public class VideoMerger {
             return null;
         }
 
-        // Sử dụng đường dẫn tuyệt đối cho file đầu ra
         Path mergedVideoPath = folderPath.resolve("video_full.mp4").toAbsolutePath().normalize();
         File outputFile = mergedVideoPath.toFile();
 
-        // Xóa file đầu ra cũ nếu tồn tại
         if (outputFile.exists()) {
             try {
                 Files.delete(outputFile.toPath());
@@ -89,7 +90,6 @@ public class VideoMerger {
             }
         }
 
-        // Kiểm tra quyền ghi vào thư mục
         Path outputDir = mergedVideoPath.getParent();
         if (!Files.exists(outputDir)) {
             try {
@@ -105,26 +105,26 @@ public class VideoMerger {
             return null;
         }
 
-        List<String> command = Arrays.asList(
+        List<String> command = List.of(
                 ffmpegPath,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", concatFile.getAbsolutePath(),
                 "-c", "copy",
-                mergedVideoPath.toString().replace("\\", "/") // Đường dẫn tuyệt đối
+                mergedVideoPath.toString().replace("\\", "/")
         );
 
-        logger.info("Đang chạy lệnh FFmpeg: {}", command.stream().collect(Collectors.joining(" ")));
+        logger.info("Đang chạy lệnh FFmpeg: {}", String.join(" ", command));
+        Process process = null;
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(folder);
             pb.redirectErrorStream(true);
-            Process process = pb.start();
-            StringBuilder ffmpegOutput = new StringBuilder();
+            process = pb.start();
+
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    ffmpegOutput.append(line).append("\n");
                     logger.debug("ffmpeg: {}", line);
                 }
             }
@@ -139,7 +139,7 @@ public class VideoMerger {
                     return null;
                 }
             } else {
-                logger.error("❌ FFmpeg thất bại với mã lỗi: {}\n{}", exitCode, ffmpegOutput);
+                logger.error("❌ FFmpeg thất bại với mã lỗi: {}", exitCode);
                 logConcatFileContent(concatFile);
                 return null;
             }
@@ -147,7 +147,20 @@ public class VideoMerger {
             logger.error("❌ Lỗi khi chạy FFmpeg: {}", e.getMessage(), e);
             return null;
         } finally {
+            if (process != null) process.destroy();
             cleanupTempFiles(concatFile);
+        }
+    }
+
+    private int extractChapterNumber(File file) {
+        try {
+            String name = file.getName();
+            int start = name.indexOf("_chuong_") + 8;
+            int end = name.lastIndexOf('.');
+            return Integer.parseInt(name.substring(start, end));
+        } catch (Exception e) {
+            logger.warn("Không thể lấy số chương từ file: {}", file.getName());
+            return Integer.MAX_VALUE;
         }
     }
 
